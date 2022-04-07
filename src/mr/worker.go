@@ -1,10 +1,13 @@
 package mr
 
-import "fmt"
-import "log"
-import "net/rpc"
-import "hash/fnv"
-
+import (
+	"fmt"
+	"hash/fnv"
+	"io/ioutil"
+	"log"
+	"net/rpc"
+	"os"
+)
 
 //
 // Map functions return a slice of KeyValue.
@@ -24,18 +27,42 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-
 //
 // main/mrworker.go calls this function.
 //
-func Worker(mapf func(string, string) []KeyValue,
-	reducef func(string, []string) string) {
+func Worker(mapf func(string, string) []KeyValue, reducef func(string, []string) string) {
+	for {
+		task := CallForTask(RequestWork)
+		if task.TaskType == "" {
+			break
+		} else if task.TaskType == "map" {
+			ApplyMap(task.Filename, mapf)
+		}
+	}
 
-	// Your worker implementation here.
+}
 
-	// uncomment to send the Example RPC to the master.
-	// CallExample()
+func ApplyMap(filename string, mapf func(string, string) []KeyValue) {
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatalf("cannot open %v", filename)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read %v", filename)
+	}
+	file.Close()
+	kva := mapf(filename, string(content))
+	fmt.Print(kva)
+}
 
+func CallForTask(messageType int) TaskResponse {
+	args := TaskRequest{}
+	args.MessageType = 0
+
+	reply := TaskResponse{}
+	call("Master.WorkerCallHandler", &args, &reply)
+	return reply
 }
 
 //
